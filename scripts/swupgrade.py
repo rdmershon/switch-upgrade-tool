@@ -6,6 +6,7 @@ A script to upgrade Cisco switch IOS
 """
 
 import argparse
+import multiprocessing
 import getpass
 import ipaddress
 import os
@@ -210,15 +211,28 @@ def main(args):
     copy_list = []
     upgrade_list = []
     reload_list = []
+    n_proc = multiprocessing.cpu_count() + 1
+    pool = multiprocessing.Pool(processes=n_proc)
     images = yaml_loader("../configs/swimages.yml")
     password = getpass.getpass("Password: ")
     for host in host_list:
-        sw = s(host, args.user, password, debug_on=args.debug)
-        (copy_s, upgrade_s) = check_upgrade(sw, images)
+        sw = s(host, args.user, password)
+        switch_list.append(sw)
+    proc_results = [
+        pool.apply_async(check_upgrade, (sw, images), {}) for sw in switch_list
+    ]
+    for proc_result in proc_results:
+        copy_s, upgrade_s = proc_result.get()
         if copy_s is not None:
             copy_list.append(copy_s)
         if upgrade_s is not None:
             upgrade_list.append(upgrade_s)
+
+        # (copy_s, upgrade_s) = check_upgrade(sw, images, debug_on=args.debug)
+        # if copy_s is not None:
+        #     copy_list.append(copy_s)
+        # if upgrade_s is not None:
+        #     upgrade_list.append(upgrade_s)
     if args.copy:
         upgrade_list.append(copy_file(copy_list))
     if args.upgrade:
